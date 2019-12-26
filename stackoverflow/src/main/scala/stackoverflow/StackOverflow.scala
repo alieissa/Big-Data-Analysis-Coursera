@@ -81,7 +81,7 @@ class StackOverflow extends Serializable {
     val questions = postings.filter(_.postingType == 1).map(p => (p.id, p))
     val answers = postings.filter(_.postingType == 2).map(p => (p.parentId.get, p))
 
-    answers.join(questions).groupByKey()
+    questions.join(answers).groupByKey()
   }
 
 
@@ -100,7 +100,15 @@ class StackOverflow extends Serializable {
       highScore
     }
 
-    ???
+
+    grouped.values.map(v => {
+      // ([q1, q2, q2], [a1,a2,a3])
+      val unzipped = v.unzip
+      val answers = unzipped._2.toArray
+      val questions = unzipped._1.toArray
+      (questions(0), answerHighScore(answers))
+    })
+
   }
 
 
