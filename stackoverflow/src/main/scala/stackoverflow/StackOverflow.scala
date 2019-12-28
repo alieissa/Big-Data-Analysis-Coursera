@@ -25,7 +25,7 @@ object StackOverflow extends StackOverflow {
     val grouped = groupedPostings(raw)
     val scored  = scoredPostings(grouped)
     val vectors = vectorPostings(scored)
-//    assert(vectors.count() == 2121822, "Incorrect number of vectors: " + vectors.count())
+    assert(vectors.count() == 2121822, "Incorrect number of vectors: " + vectors.count())
 
     val means   = kmeans(sampleVectors(vectors), vectors, debug = true)
     val results = clusterResults(means, vectors)
@@ -128,7 +128,7 @@ class StackOverflow extends Serializable {
       }
     }
 
-    ???
+    scored.map(p => (firstLangInTag(p._1.tags, langs).getOrElse(-1)*langSpread, p._2))
   }
 
 
@@ -281,15 +281,32 @@ class StackOverflow extends Serializable {
   //  Displaying results:
   //
   //
+  // Solutions from https://github.com/arnaudj/mooc-spark-coursera-bigdata-analysis-spark-epfl/blob/master/week2-3-stackoverflow/src/main/scala/stackoverflow/StackOverflow.scala
   def clusterResults(means: Array[(Int, Int)], vectors: RDD[(LangIndex, HighScore)]): Array[(String, Double, Int, Int)] = {
     val closest = vectors.map(p => (findClosest(p, means), p))
     val closestGrouped = closest.groupByKey()
 
     val median = closestGrouped.mapValues { vs =>
-      val langLabel: String   = ??? // most common language in the cluster
-      val langPercent: Double = ??? // percent of the questions in the most common language
-      val clusterSize: Int    = ???
-      val medianScore: Int    = ???
+      // most common language in the cluster
+      val predominentLangIndex:Int = vs.map(p => (p._1 / langSpread, 1)) // (lang1, 1), (lang1, 2), (lang2, 1)...
+        .groupBy(_._1)   // (lang1, (lang1, (1,1,1))), (lang2, (lang2, (1)) )  (groupBy retains _1 in aggregate)
+        .mapValues(list => list.map(_._2).sum) // (lang1, 3), (lang2, 1)
+        .maxBy(_._2)._1
+      assert(predominentLangIndex >= 0 && predominentLangIndex < langs.size, s"Invalid predominentLangIndex: ${predominentLangIndex}")
+
+      val langLabel: String = langs(predominentLangIndex)
+      val clusterSize: Int = vs.size
+      val langCount: Int = vs.count(p => (p._1 / langSpread) == predominentLangIndex)
+      // percent of the questions in the most common language
+      val langPercent: Double = (langCount.toDouble / clusterSize) * 100
+
+      def computeMedian(s: Seq[Int]) = {
+        val (lower, upper) = s.sortWith(_ < _).splitAt(s.size / 2)
+        if (s.size % 2 == 0) (lower.last + upper.head) / 2 else upper.head
+      }
+
+      val arr = vs.map(_._2).toArray
+      val medianScore: Int = computeMedian(arr)
 
       (langLabel, langPercent, clusterSize, medianScore)
     }
